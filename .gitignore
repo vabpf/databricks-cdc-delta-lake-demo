@@ -1,0 +1,32 @@
+# ---------------------------------------------------------------------------
+# Nothing generated, nothing secret, nothing machine-specific.
+# ---------------------------------------------------------------------------
+
+# --- generated data (large, reproducible from the scripts) -----------------
+# The raw Kaggle CSVs and the synthetic CDC landing zone are both rebuilt by
+# tools/download_olist.py and tools/generate_cdc.py. They are ~20 MB and 100+
+# files of gzipped JSON, so they stay out of git.
+data/olist/
+data/landing/
+
+# --- Databricks CLI / bundle state ----------------------------------------
+.databricks/
+*.tfstate
+*.tfstate.backup
+
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# --- editors / OS ---------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+*.swp

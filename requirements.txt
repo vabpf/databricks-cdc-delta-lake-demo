@@ -1,0 +1,22 @@
+# ---------------------------------------------------------------------------
+# Project metadata and local tooling requirements
+# ---------------------------------------------------------------------------
+# These are for the LOCAL tooling only (downloading the source data, generating
+# the synthetic CDC stream, uploading it to a Unity Catalog volume). The
+# pipeline itself declares its own dependencies and needs nothing from here:
+# src/pipeline/ uses only pyspark.pipelines and the Python standard library.
+#
+# Install with:  pip install -r requirements.txt
+# ---------------------------------------------------------------------------
+
+# Data wrangling for the CDC generator
+pandas>=2.0
+
+# Downloads the Olist "Brazilian E-Commerce" dataset from Kaggle.
+# kagglehub stores credentials in ~/.cache/kagglehub; see the README for the
+# one-time `kaggle.json` setup. If you would rather not install it, download the
+# CSVs by hand -- tools/generate_cdc.py only needs the files on disk.
+kagglehub>=0.3
+
+# Used by tools/upload_landing.py to push the landing zone into a UC volume.
+databricks-sdk>=0.30

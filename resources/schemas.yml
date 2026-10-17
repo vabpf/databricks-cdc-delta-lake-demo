@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+# Schemas -- one per medallion layer
+# ---------------------------------------------------------------------------
+# Separate schemas rather than one schema with name prefixes, so that Unity
+# Catalog lineage, grants and retention can be reasoned about per layer. The
+# pipeline writes to all five from a single pipeline, using fully qualified
+# names built from its `configuration` block.
+# ---------------------------------------------------------------------------
+resources:
+  schemas:
+    retail_landing:
+      name: ${var.landing_schema}
+      catalog_name: ${var.catalog}
+      comment: Landing zone for the CDC demo. Holds the `cdc` volume with raw Debezium-shaped event files.
+
+    retail_bronze:
+      name: ${var.bronze_schema}
+      catalog_name: ${var.catalog}
+      comment: Bronze. Raw CDC envelopes from Auto Loader, plus the conformed typed change streams.
+
+    retail_silver:
+      name: ${var.silver_schema}
+      catalog_name: ${var.catalog}
+      comment: Silver. Current state and history built by AUTO CDC (SCD1 and SCD2).
+
+    retail_gold:
+      name: ${var.gold_schema}
+      catalog_name: ${var.catalog}
+      comment: Gold. Delta CDF change feeds over silver, plus the star-schema marts.
+
+    retail_ops:
+      name: ${var.ops_schema}
+      catalog_name: ${var.catalog}
+      comment: Operations. Quarantine / dead-letter tables for records rejected by data-quality expectations.

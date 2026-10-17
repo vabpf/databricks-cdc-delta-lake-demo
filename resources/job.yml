@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# Scheduled refresh -- what this would look like in production
+# ---------------------------------------------------------------------------
+# The demo is driven by hand (`databricks bundle run retail_medallion_cdc`), but
+# a real CDC pipeline is driven by a schedule. This job exists to show that the
+# same pipeline resource can be scheduled, and to make the "paused by default"
+# behaviour explicit: nothing here will spend Free Edition quota until you
+# deliberately unpause it.
+#
+#   databricks bundle run retail_medallion_cdc_daily     # run it now, once
+#   # then unpause the schedule in the workspace UI if you want it to repeat
+#
+# Note that a triggered pipeline update is the right shape for this. Each update
+# picks up whatever files have landed in the volume since the last one, so a
+# scheduled refresh is genuinely incremental -- it is not a re-run of the load.
+# ---------------------------------------------------------------------------
+resources:
+  jobs:
+    retail_medallion_cdc_daily:
+      name: retail_medallion_cdc_daily
+      description: >-
+        Daily refresh of the retail CDC medallion pipeline. Paused by default so
+        it never consumes Free Edition quota unexpectedly.
+      max_concurrent_runs: 1
+      tags:
+        project: retail-cdc-demo
+        layer: orchestration
+      tasks:
+        - task_key: refresh_medallion
+          description: Incremental update of every dataset in the medallion pipeline.
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.retail_medallion_cdc.id}
+            # false = incremental. Set true only when you intend to rebuild every
+            # table from the landing zone (the 99_reset_demo notebook does this).
+            full_refresh: false
+      schedule:
+        quartz_cron_expression: "0 0 7 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED

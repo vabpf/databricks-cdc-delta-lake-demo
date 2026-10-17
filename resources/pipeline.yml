@@ -1,0 +1,67 @@
+# ---------------------------------------------------------------------------
+# Lakeflow pipeline -- one ETL pipeline for the whole medallion
+# ---------------------------------------------------------------------------
+# Free Edition permits only one *ETL* pipeline, so everything lives here: seven
+# Auto Loader sources, the conform/quarantine split, eight AUTO CDC targets, the
+# gold change feeds and the gold marts. That constraint turns out to be a
+# feature -- the dependency graph across every layer is expressed by the code
+# itself, and one `bundle run` refreshes the lot in the right order.
+#
+# Each entry under `libraries` is a declarative dataset definition, not an
+# imperative script. Order here is for readability only; the pipeline derives
+# the real execution order from which datasets read which.
+#
+# The `configuration` block is the single source of truth for naming. Python
+# reads it with spark.conf.get("retail_silver"); SQL reads it with
+# ${retail_silver}. Those values must stay in step with resources/schemas.yml,
+# which is why both sides reference the same bundle variables.
+# ---------------------------------------------------------------------------
+resources:
+  pipelines:
+    retail_medallion_cdc:
+      name: retail_medallion_cdc
+      # Note: pipelines have no `comment`/`description` field in the API, so the
+      # explanation lives in this file's header and in tags.
+      # Serverless is mandatory on Free Edition, and is what makes the pipeline
+      # scale to zero between updates.
+      serverless: true
+      # CURRENT channel: a stable runtime. Nothing in this repo uses a Beta or
+      # Preview feature -- the inline `FLOW AUTO CDC` form, bitemporal AUTO CDC
+      # and materialized-view change feeds are all deliberately avoided and are
+      # documented as extensions instead.
+      channel: CURRENT
+      continuous: false
+      # Default destination for datasets that do not use a fully qualified name
+      # (the bronze Auto Loader tables). Every other dataset is written to an
+      # explicit schema via the configuration values below.
+      catalog: ${var.catalog}
+      schema: ${var.bronze_schema}
+      tags:
+        project: retail-cdc-demo
+        pattern: medallion-auto-cdc
+
+      libraries:
+        - file:
+            path: ../src/pipeline/01_bronze_autoloader.py
+        - file:
+            path: ../src/pipeline/02_bronze_conform.sql
+        - file:
+            path: ../src/pipeline/03_silver_auto_cdc.sql
+        - file:
+            path: ../src/pipeline/04_gold_change_feeds.py
+        - file:
+            path: ../src/pipeline/05_gold_marts.sql
+
+      configuration:
+        retail_catalog: ${var.catalog}
+        retail_bronze: ${var.bronze_schema}
+        retail_silver: ${var.silver_schema}
+        retail_gold: ${var.gold_schema}
+        retail_ops: ${var.ops_schema}
+        retail_landing: /Volumes/${var.catalog}/${var.landing_schema}/${var.volume_name}
+        # Every table created by this pipeline gets the Delta change data feed,
+        # which the gold layer depends on. The silver layer also sets the
+        # property explicitly on each target, so this is belt and braces: it
+        # covers the bronze tables too, which is what lets you inspect them with
+        # table_changes() in the notebooks.
+        spark.databricks.delta.properties.defaults.enableChangeDataFeed: "true"

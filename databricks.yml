@@ -1,0 +1,64 @@
+# ---------------------------------------------------------------------------
+# Databricks Asset Bundle root
+# ---------------------------------------------------------------------------
+# Declares everything the demo needs so it can be created and torn down as a
+# unit: five schemas, one landing volume, one Lakeflow pipeline, one scheduled
+# job.
+#
+# Nothing is hardcoded to a workspace. Authentication and host come from your
+# Databricks CLI profile (or DATABRICKS_HOST / DATABRICKS_TOKEN), so the same
+# bundle works against your workspace with no edits:
+#
+#   databricks bundle validate
+#   databricks bundle deploy
+#   databricks bundle run retail_medallion_cdc
+#
+# Free Edition notes
+# ------------------
+#   * The only writable catalog is `workspace`, which is the default below.
+#   * Compute must be serverless (see resources/pipeline.yml).
+#   * There is no DBFS root, which is why the landing zone is a UC volume.
+# ---------------------------------------------------------------------------
+bundle:
+  name: databricks-cdc-delta-lake-demo
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog that hosts every retail schema and the landing volume.
+    default: workspace
+
+  # One schema per medallion layer. These are parameters rather than literals
+  # because the same names are needed in two places -- the schema resources and
+  # the pipeline's `configuration` block -- and duplicated literals drift.
+  landing_schema:
+    description: Schema holding the landing volume for raw CDC event files.
+    default: retail_landing
+  bronze_schema:
+    description: Schema holding the raw + conformed ingestion tables.
+    default: retail_bronze
+  silver_schema:
+    description: Schema holding the AUTO CDC (SCD1/SCD2) tables.
+    default: retail_silver
+  gold_schema:
+    description: Schema holding the change feeds and star-schema marts.
+    default: retail_gold
+  ops_schema:
+    description: Schema holding the quarantine / dead-letter tables.
+    default: retail_ops
+
+  volume_name:
+    description: Volume inside the landing schema that holds the CDC landing zone.
+    default: cdc
+
+targets:
+  dev:
+    default: true
+    # `mode: development` is deliberately not used. It prefixes resource names
+    # with the deploying user, and this demo is far easier to follow when the
+    # pipeline and its tables are named exactly as the README describes.
+    #
+    # No workspace block either: host and credentials come from the CLI profile,
+    # so there is no hostname or token in the repository.

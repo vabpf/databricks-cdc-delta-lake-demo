@@ -1,0 +1,20 @@
+# ---------------------------------------------------------------------------
+# Landing volume
+# ---------------------------------------------------------------------------
+# The generated CDC stream is uploaded here and read by Auto Loader. Unity
+# Catalog volumes are the only supported landing zone on Free Edition -- there
+# is no DBFS root to write to -- so this resource is not optional.
+#
+# Resulting path (with the default variables):
+#   /Volumes/workspace/retail_landing/cdc
+# which is exactly what the pipeline's `retail_landing` configuration value
+# points at.
+# ---------------------------------------------------------------------------
+resources:
+  volumes:
+    retail_landing_cdc:
+      name: ${var.volume_name}
+      catalog_name: ${var.catalog}
+      schema_name: ${var.landing_schema}
+      volume_type: MANAGED
+      comment: "Raw CDC landing zone: events/<entity>/*.jsonl.gz, reference/*.csv, _manifest.json"
