@@ -194,6 +194,24 @@ except Exception:
 # MAGIC Look the pipeline up in `system.lakeflow.pipelines`. On a workspace where
 # MAGIC the `system` catalog is not available this falls back to a name-only
 # MAGIC message -- the demo does not depend on it.
+# MAGIC
+# MAGIC Two things about that table are easy to assume and both are wrong:
+# MAGIC
+# MAGIC * There is **no `catalog`, `schema` or `state` column**. The columns are
+# MAGIC   `pipeline_id`, `name`, `pipeline_type`, `settings`, `configuration`,
+# MAGIC   `tags`, `change_time`, `delete_time`, `create_time`. The default
+# MAGIC   catalog and schema are not inside `settings` either (that holds runtime
+# MAGIC   flags: serverless, channel, edition, development). The fully qualified
+# MAGIC   names *this* pipeline writes to are its `configuration` values -- the
+# MAGIC   very same map the pipeline reads back with `spark.conf.get(...)`.
+# MAGIC * It is an **SCD2** table: every change emits a new row, so a plain read
+# MAGIC   returns the whole history, including deletions. Take the newest
+# MAGIC   `change_time` per `pipeline_id`, then drop rows whose `delete_time` is
+# MAGIC   set.
+# MAGIC
+# MAGIC The pipeline's live *state* is not in this table at all. What is available
+# MAGIC is the outcome of its most recent update, in
+# MAGIC `system.lakeflow.pipeline_update_timeline` -- that is the second cell.
 
 # COMMAND ----------
 
@@ -201,14 +219,65 @@ try:
     display(
         spark.sql(
             f"""
-            SELECT pipeline_id, name, catalog, schema, state
-            FROM system.lakeflow.pipelines
-            WHERE name = '{PIPELINE_NAME}'
+            WITH latest AS (
+              SELECT
+                *,
+                ROW_NUMBER() OVER (
+                  PARTITION BY workspace_id, pipeline_id ORDER BY change_time DESC
+                ) AS rn
+              FROM system.lakeflow.pipelines
+              WHERE name = '{PIPELINE_NAME}'
+            )
+            SELECT
+              pipeline_id,
+              name,
+              configuration['retail_catalog'] AS catalog,
+              configuration['retail_bronze']  AS default_schema,
+              configuration['retail_silver']  AS silver_schema,
+              configuration['retail_gold']    AS gold_schema,
+              configuration['retail_ops']     AS ops_schema,
+              configuration['retail_landing'] AS landing_volume,
+              change_time
+            FROM latest
+            WHERE rn = 1 AND delete_time IS NULL
             """
         )
     )
 except Exception as exc:
     print(f"could not query system.lakeflow.pipelines: {exc}")
+    print(f"Look for a pipeline named '{PIPELINE_NAME}' in the workspace UI.")
+
+# COMMAND ----------
+
+try:
+    display(
+        spark.sql(
+            f"""
+            SELECT
+              update_id,
+              update_type,
+              trigger_type,
+              result_state,
+              period_start_time,
+              period_end_time
+            FROM system.lakeflow.pipeline_update_timeline
+            WHERE pipeline_id IN (
+              SELECT pipeline_id
+              FROM system.lakeflow.pipelines
+              WHERE name = '{PIPELINE_NAME}'
+            )
+            ORDER BY period_end_time DESC
+            LIMIT 5
+            """
+        )
+    )
+    print(
+        "One row per pipeline update (newest first). An empty result means the\n"
+        "pipeline has not run yet, or that these system tables are still\n"
+        "catching up -- records typically land within the hour."
+    )
+except Exception as exc:
+    print(f"could not query system.lakeflow.pipeline_update_timeline: {exc}")
     print(f"Look for a pipeline named '{PIPELINE_NAME}' in the workspace UI.")
 
 # COMMAND ----------
