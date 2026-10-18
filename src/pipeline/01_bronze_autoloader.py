@@ -39,6 +39,34 @@ ENTITY_COMMENTS = {
 }
 
 
+# Auto Loader types a column by looking only at the sample it reads first. Every
+# create and every snapshot record carries before=null, so if an entity's first
+# files happen to contain nothing but creates, the whole `before` struct is
+# inferred as STRING -- and then `before.<key>` in 02_bronze_conform.sql fails to
+# analyse with:
+#
+#   Can't extract a value from "before". Need a complex type [STRUCT, ARRAY,
+#   MAP] but got "STRING".
+#
+# A pipeline analyses its entire graph before executing, so that one mistyped
+# column means zero tables are created and the whole update fails in a second.
+#
+# Hinting a single string column *inside* `before` pins it as a struct no matter
+# which operations happen to land in the sample. The hint only asserts a nested
+# field's type -- it does not declare the struct's shape, so the remaining
+# fields still come from inference and `after` (the drift-carrying payload) is
+# untouched. Each entry below is the string component of that entity's key.
+BEFORE_KEY_HINTS = {
+    "customers": "customer_id",
+    "products": "product_id",
+    "sellers": "seller_id",
+    "orders": "order_id",
+    "order_items": "order_id",
+    "order_payments": "order_id",
+    "order_reviews": "review_id",
+}
+
+
 def _autoloader(entity: str):
     """A streaming DataFrame over one entity's landing directory."""
     return (
@@ -47,6 +75,10 @@ def _autoloader(entity: str):
         .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
         .option("cloudFiles.rescuedDataColumn", "_rescued_data")
         .option("cloudFiles.inferColumnTypes", "true")
+        .option(
+            "cloudFiles.schemaHints",
+            f"before.{BEFORE_KEY_HINTS[entity]} STRING",
+        )
         .option("cloudFiles.includeExistingFiles", "true")
         .load(f"{EVENTS_PATH}/{entity}/")
     )

@@ -707,7 +707,7 @@ def build_child_events(
     ent = ENTITIES["order_reviews"]
     revs = data["order_reviews"]
     revs = revs[revs["order_id"].isin(order_ids)]
-    review_edit_ids: list[tuple[str, pd.Timestamp, dict]] = []
+    review_edit_ids: list[tuple[str, pd.Timestamp, dict, dict]] = []
     for _, r in revs.iterrows():
         payload = row_to_payload(r, ent.columns)
         created = pd.to_datetime(r.get("review_creation_date"), errors="coerce")
@@ -720,6 +720,12 @@ def build_child_events(
         # Reviews are the one entity where a *partial* update is realistic:
         # the customer edits only the score/comment and the CRM sends only the
         # changed columns. The pipeline uses IGNORE NULL UPDATES for this.
+        #
+        # The before image still carries the whole prior row. That is the
+        # Debezium contract the rest of this file follows (before=null only on
+        # create/snapshot, never on update) and 01_bronze_autoloader.py relies
+        # on it: an entity whose sample contains no before image at all has its
+        # `before` struct inferred as STRING, which breaks `before.<key>`.
         if rng.random() < cfg.p_review_edit:
             answered = pd.to_datetime(r.get("review_answer_timestamp"),
                                       errors="coerce")
@@ -735,10 +741,11 @@ def build_child_events(
                 "review_comment_title": payload.get("review_comment_title"),
                 "review_comment_message": payload.get("review_comment_message"),
             }
-            review_edit_ids.append((payload["review_id"], edit_ts, partial))
+            review_edit_ids.append(
+                (payload["review_id"], edit_ts, partial, dict(payload)))
 
-    for _, edit_ts, partial in review_edit_ids:
-        log_.emit(ent, "u", edit_ts, before=None, after=partial,
+    for _, edit_ts, partial, original in review_edit_ids:
+        log_.emit(ent, "u", edit_ts, before=original, after=partial,
                   note="review edited (partial update)")
 
 

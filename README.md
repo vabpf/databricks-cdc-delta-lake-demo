@@ -173,6 +173,22 @@ transactionally. Schema drift does not appear until wave 3 (`orders`) and
 wave 4 (`products`), so running all six waves in one shot is fine but runs the
 drift past you.
 
+Two traps worth knowing before you start editing pipeline code:
+
+* **`bundle run` does not sync your working tree.** It re-runs whatever the last
+  `bundle deploy` uploaded. Change anything under `src/pipeline/` and you must
+  `databricks bundle deploy` again first, or you will re-run the old code and
+  debug a fix that was never applied.
+* **The platform retries a failed update on its own** (`cause: RETRY_ON_FAILURE`,
+  backing off about 25s / 45s / 85s / 166s, up to five attempts). Nothing in
+  this bundle configures that. One bug therefore looks like five, and a manual
+  run in the meantime is rejected with *"An active update already exists for
+  pipeline"*. Stop the retry loop before intervening:
+
+  ```bash
+  databricks pipelines stop <pipeline-id>
+  ```
+
 Then take the tour:
 
 ```

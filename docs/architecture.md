@@ -64,9 +64,14 @@ The conventions, all of them load-bearing:
   `sellers`) arrive as an initial **snapshot** (`r`); transactional entities
   (`orders`, `order_items`, `order_payments`, `order_reviews`) are **created**
   in flight (`c`).
-* `after` is `null` on delete, `before` is `null` on create. The whole-image-null
+* `after` is `null` on delete, `before` is `null` on create and on snapshot-read
+  -- and only there. An update always carries a before image, even when its
+  `after` image is partial (the review edits below). The whole-image-null
   convention means a consumer never has to guess whether a missing field means
-  "unchanged" or "explicitly null".
+  "unchanged" or "explicitly null". It is also load-bearing for the reader:
+  Auto Loader infers the *type* of `before` from the sample it reads, so an
+  entity whose opening files happen to hold no before image at all sees the
+  whole struct flattened to `STRING`. See item 8 in section 13.
 * `event_ts` is **business time** -- the real 2017/2018 date the change happened.
   This is the property everything else depends on.
 * `lsn` is a monotonically increasing source log position, used as a tie-breaker.
@@ -523,3 +528,25 @@ Break one and the demo breaks in a way that is not always obvious.
    the bug. The first two runs of this demo failed exactly this way, once on
    `TRACK HISTORY ON` and once on `COLUMNS`. The clause shapes are pinned in a
    comment on `silver.sellers` in `03_silver_auto_cdc.sql`.
+8. **A column that is null in Auto Loader's sample is inferred as `STRING`.**
+   The sample is the first files Auto Loader sees, and for JSON with
+   `inferColumnTypes` on, a field that is null in *every* sampled record gets
+   the fallback type `STRING` rather than a struct. `before` is null on create
+   and on snapshot-read, so an entity whose opening files carry only creates --
+   as `order_reviews` did -- has the entire `before` struct flattened to a
+   scalar, and `before.<key>` then fails at analysis with:
+
+   ```
+   Can't extract a value from "before". Need a complex type
+   [STRUCT, ARRAY, MAP] but got "STRING".
+   ```
+
+   That is again an *analysis* failure, so it costs every table in the pipeline,
+   not one. Two defences, both in place: the generator never omits `before` on
+   an update (and `tools/verify_stream.py` asserts the contract, so a
+   regenerate cannot silently reintroduce it), and `01_bronze_autoloader.py`
+   pins `before.<string-key> STRING` via `cloudFiles.schemaHints`. The hint
+   asserts one nested field's type rather than declaring the struct's shape, so
+   every other field -- and the drift-carrying `after` payload -- is still
+   supplied by inference. This matters because an inferred schema is sticky: a
+   hint is the only way to correct `before` without recreating the pipeline.
