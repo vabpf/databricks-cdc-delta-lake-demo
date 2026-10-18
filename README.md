@@ -160,6 +160,7 @@ pipeline, upload the next, run again:
 
 ```bash
 python tools/upload_landing.py --wave 1
+databricks bundle run retail_medallion_cdc --validate-only   # dry run: checks the graph, builds nothing
 databricks bundle run retail_medallion_cdc
 
 python tools/upload_landing.py --wave 2
@@ -167,6 +168,13 @@ databricks bundle run retail_medallion_cdc
 
 # ... through wave 6, or `python tools/upload_landing.py --all` to do the lot
 ```
+
+`--validate-only` analyses the whole pipeline graph and resolves every dataset
+without materialising any data, so it reports parse and analysis errors in
+seconds at no compute cost. Every hard failure this repo hit while being built
+was an analysis error, so it is worth doing before spending a real update --
+and a validate update never retries. Skip it between waves: once a wave has
+built cleanly, the schema is known and the update is doing real work.
 
 Each run only ingests the **new** files: Auto Loader tracks processed files
 transactionally. Schema drift does not appear until wave 3 (`orders`) and
@@ -180,10 +188,14 @@ Two traps worth knowing before you start editing pipeline code:
   `databricks bundle deploy` again first, or you will re-run the old code and
   debug a fix that was never applied.
 * **The platform retries a failed update on its own** (`cause: RETRY_ON_FAILURE`,
-  backing off about 25s / 45s / 85s / 166s, up to five attempts). Nothing in
-  this bundle configures that. One bug therefore looks like five, and a manual
-  run in the meantime is rejected with *"An active update already exists for
-  pipeline"*. Stop the retry loop before intervening:
+  backing off about 25s / 45s / 85s / 166s). An API- or job-triggered update
+  uses automatic retry-and-restart, which defaults to **five update retries plus
+  two per flow**, so one bug looks like several, quota burns, and an ad-hoc run
+  in the meantime is rejected with *"An active update already exists for
+  pipeline"*. This bundle pins both bounds to zero for the iteration loop
+  (`pipelines.numUpdateRetryAttempts` and `pipelines.maxFlowRetryAttempts` in
+  `resources/pipeline.yml`); drop those two lines for a scheduled pipeline. If a
+  retry loop is ever live, stop it before intervening:
 
   ```bash
   databricks pipelines stop <pipeline-id>

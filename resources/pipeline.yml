@@ -65,3 +65,16 @@ resources:
         # covers the bronze tables too, which is what lets you inspect them with
         # table_changes() in the notebooks.
         spark.databricks.delta.properties.defaults.enableChangeDataFeed: "true"
+
+        # Fail fast, on purpose. An API- or job-triggered update uses the
+        # platform's automatic retry-and-restart behaviour, whose defaults are
+        # five update retries plus two per flow with exponential backoff (~25s,
+        # 45s, 85s, 166s). So one bug looks like six, quota burns, and an ad-hoc
+        # run in the meantime is rejected with "An active update already exists
+        # for pipeline". Both bounds are pinned to zero for the wave-by-wave
+        # iteration this demo is built around. For a scheduled production
+        # pipeline, drop these two lines so the defaults absorb transient
+        # infrastructure failures. A `--validate-only` update never retries
+        # either way.
+        pipelines.numUpdateRetryAttempts: "0"
+        pipelines.maxFlowRetryAttempts: "0"
