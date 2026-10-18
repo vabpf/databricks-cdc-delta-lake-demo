@@ -168,18 +168,23 @@ FROM STREAM(<bronze source>)
 ```
 
 Clause order is fixed, and `TRACK HISTORY ON` belongs at the *end*, after
-`STORED AS`. Two clause shapes are easy to confuse and worth stating plainly,
-because getting them wrong is a parse error, not a warning:
+`STORED AS`. Column lists in `COLUMNS` and `TRACK HISTORY ON` are **bare** --
+no parentheses. Only `EXCEPT` takes parentheses:
 
 ```sql
-COLUMNS (a, b)                  -- parenthesised list
-TRACK HISTORY ON a, b           -- bare list, NO parentheses
-COLUMNS TO UPDATE <column>      -- names a source column holding array<string>
+COLUMNS order_id, order_status      -- bare include list
+COLUMNS * EXCEPT (a, b)             -- EXCEPT form does use parentheses
+TRACK HISTORY ON a, b               -- bare include list
+TRACK HISTORY ON * EXCEPT (a, b)    -- EXCEPT form does use parentheses
+COLUMNS TO UPDATE <column>          -- names a source column holding array<string>
 ```
 
-The docs give the same `columnList` nonterminal for `COLUMNS` and
-`TRACK HISTORY ON`, which is what makes the asymmetry surprising. See the
-worked failure in §13.
+This is worth stating because the official `AUTO CDC INTO` reference documents
+it wrongly. Its `COLUMNS` example is `COLUMNS (userId, name, city)` *with*
+parentheses, and its syntax block gives the same `columnList` nonterminal to
+`COLUMNS`, `IGNORE NULL UPDATES ON` and `TRACK HISTORY ON`. Trusting that
+example is a parse error, so the same two-character mistake was made twice in
+this pipeline's history. See the worked failure in §13.
 
 The inline single-statement form (`CREATE ... FLOW AUTO CDC ...`) exists, but it
 is **Beta and requires the Preview channel**, so it is avoided. This matters
@@ -193,7 +198,7 @@ because the deliverable has to run on Free Edition on the stable channel.
 | `products` | 2 | `silver.products` | recategorisation must be replayable |
 | `sellers` | 2 | `silver.sellers` | `TRACK HISTORY ON seller_city, seller_state` -- only a *relocation* opens a version, a zip correction does not |
 | `orders` | 1 | `silver.orders` | a single current row per order |
-| (same source) | 2 | `silver.orders_status_history` | the delivery timeline: `COLUMNS (order_id, order_status)`, `TRACK HISTORY ON order_status` |
+| (same source) | 2 | `silver.orders_status_history` | the delivery timeline: `COLUMNS order_id, order_status`, `TRACK HISTORY ON order_status` |
 | `order_items` | 1 | `silver.order_items` | composite key; corrections are overwrites |
 | `order_payments` | 1 | `silver.order_payments` | composite key; reversals delete |
 | `order_reviews` | 1 | `silver.order_reviews` | `IGNORE NULL UPDATES` + `APPLY AS TRUNCATE` |
@@ -506,12 +511,15 @@ Break one and the demo breaks in a way that is not always obvious.
 6. **The generator is deterministic.** It uses `zlib.crc32`, not `hash()`, and
    `_monotonic` guarantees per-key strictly-increasing `event_ts` (skipped for
    null-key rows). Change either and the seeded stream changes.
-7. **`COLUMNS (...)` is parenthesised; `TRACK HISTORY ON ...` is not.** They look
-   like the same clause and are documented with the same `columnList`
-   nonterminal, but `TRACK HISTORY ON (a, b)` is a parse error. Because a
-   pipeline analyses the whole graph before executing, one stray pair of
-   parentheses stops every table in the pipeline from being created -- the
-   update fails in seconds with `[PARSE_SYNTAX_ERROR] ... 'Syntax error at or
-   near ('` and nothing is built, so the failure looks bigger than the bug. The
-   first wave of this demo failed exactly this way; the clause shape is pinned
-   in a comment on `silver.sellers` in `03_silver_auto_cdc.sql`.
+7. **Column lists in AUTO CDC are bare.** `COLUMNS order_id, order_status` and
+   `TRACK HISTORY ON a, b` -- no parentheses. Only the `EXCEPT` form takes them:
+   `COLUMNS * EXCEPT (a, b)`. The official `AUTO CDC INTO` reference documents
+   `COLUMNS (userId, name, city)` *with* parentheses, and gives the same
+   `columnList` nonterminal to all three clauses, so the docs lead directly into
+   this mistake. Because a pipeline analyses the whole graph before executing,
+   one stray pair of parentheses stops every table in the pipeline from being
+   created -- the update fails in seconds with `[PARSE_SYNTAX_ERROR] ... 'Syntax
+   error at or near ('` and nothing is built, so the failure looks bigger than
+   the bug. The first two runs of this demo failed exactly this way, once on
+   `TRACK HISTORY ON` and once on `COLUMNS`. The clause shapes are pinned in a
+   comment on `silver.sellers` in `03_silver_auto_cdc.sql`.

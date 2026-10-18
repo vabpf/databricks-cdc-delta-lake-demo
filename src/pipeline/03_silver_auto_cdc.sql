@@ -111,15 +111,28 @@ FROM STREAM(${retail_catalog}.${retail_bronze}.products_cdc)
 -- data -- notebooks/30_reprocess_and_late_data.py injects a zip-only change to
 -- make it visible on demand.
 --
--- SYNTAX TRAP -- read this before "tidying" the clause below.
---   COLUMNS takes a *parenthesised* list:      COLUMNS (order_id, order_status)
---   TRACK HISTORY ON takes a *bare* list:      TRACK HISTORY ON seller_city, seller_state
--- The docs list the same `columnList` nonterminal for both clauses, so it is
--- natural to assume they take the same shape. They do not. Writing
--- `TRACK HISTORY ON (a, b)` fails to parse:
+-- SYNTAX TRAP -- read this before "tidying" the clauses below.
+--
+--   Column lists in AUTO CDC are BARE. No parentheses:
+--     COLUMNS order_id, order_status
+--     TRACK HISTORY ON seller_city, seller_state
+--     COLUMNS * EXCEPT (a, b)          <- the EXCEPT form does use parens
+--
+-- Both clauses take the same bare `columnList`, so the parenthesised form is
+-- wrong in both. It fails to parse, and it fails the same way every time:
 --   [PARSE_SYNTAX_ERROR] Syntax error at or near '(' SQLSTATE: 42601
--- and because a pipeline analyses the whole graph before executing, that one
--- parenthesised list stops *every* table in the pipeline from being created.
+-- with the caret parked on the '('.
+--
+-- The Databricks docs actively mislead here. The AUTO CDC INTO reference gives
+-- the example `COLUMNS (userId, name, city)` WITH parentheses, and the syntax
+-- block lists the same `columnList` nonterminal for COLUMNS, IGNORE NULL
+-- UPDATES ON and TRACK HISTORY ON. Only the first is documented wrong, but it
+-- is enough to break the pipeline -- twice, in this file's history.
+--
+-- And because a pipeline analyses the whole graph before executing anything,
+-- one parenthesised list stops *every* table in the pipeline from being
+-- created. The update fails in about a second and builds nothing, so a
+-- two-character mistake looks like a total failure.
 CREATE OR REFRESH STREAMING TABLE ${retail_catalog}.${retail_silver}.sellers
 COMMENT 'Seller dimension history. History is tracked on (seller_city, seller_state) only.'
 TBLPROPERTIES (
@@ -173,11 +186,11 @@ FROM STREAM(${retail_catalog}.${retail_bronze}.orders_cdc)
 -- ===========================================================================
 -- orders_status_history -- SCD Type 2, narrowed to the status column
 -- ===========================================================================
--- COLUMNS (order_id, order_status) drops everything except the key and the
+-- COLUMNS order_id, order_status drops everything except the key and the
 -- tracked attribute, so the target is a clean delivery-lifecycle timeline:
 -- created -> approved -> shipped|invoiced -> delivered, or -> canceled.
 -- TRACK HISTORY ON order_status makes the intent explicit: only a status change
--- opens a version. Bare list, no parentheses -- see the syntax trap at the
+-- opens a version. Bare lists, no parentheses -- see the syntax trap at the
 -- sellers flow above.
 CREATE OR REFRESH STREAMING TABLE ${retail_catalog}.${retail_silver}.orders_status_history
 COMMENT 'Order status timeline (SCD2). One row per status period, straight from the order change stream.'
@@ -194,7 +207,7 @@ FROM STREAM(${retail_catalog}.${retail_bronze}.orders_cdc)
   KEYS (order_id)
   APPLY AS DELETE WHEN _op = 'd'
   SEQUENCE BY _event_ts
-  COLUMNS (order_id, order_status)
+  COLUMNS order_id, order_status
   STORED AS SCD TYPE 2
   TRACK HISTORY ON order_status;
 
