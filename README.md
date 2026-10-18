@@ -41,6 +41,7 @@ afterwards.
 | `tools/upload_landing.py` | push the landing zone into a Unity Catalog volume, **wave by wave** |
 | `tools/verify_stream.py` | assert the generated stream's invariants hold (run locally) |
 | `tools/validate_notebooks.py` | check the notebooks are well-formed (run locally; no workspace needed) |
+| `tools/tag_schemas.py` | label the demo schemas and volumes with `project`/`layer` tags so they are findable |
 | `src/pipeline/` | the Lakeflow pipeline, five files |
 | `resources/` | bundle resources: 5 schemas, 1 volume, the pipeline, a paused job |
 | `notebooks/` | guided tour + four focused notebooks |
@@ -115,6 +116,27 @@ databricks bundle deploy
 
 This creates the five schemas and the landing volume declared in `resources/`.
 It does **not** upload data and does **not** start the pipeline.
+
+Then label them:
+
+```bash
+python tools/tag_schemas.py
+```
+
+Free Edition gives you a single writable catalog (`workspace`) and Unity Catalog
+has no folders, so the five schemas share that catalog with `default` and
+`information_schema`. The `retail_*` prefix already narrows them down in Catalog
+Explorer; the tags add what a name cannot -- they are what the workspace search
+bar and the Catalog Explorer **Tag** filter index, and they are queryable:
+
+```sql
+SELECT * FROM workspace.information_schema.schema_tags;
+```
+
+The bundle cannot set these itself (an Asset Bundle `Schema` resource has no
+`tags` field), which is why it is a separate step. Re-run it with
+`--include-tables` once the pipeline has built the tables, so the silver and gold
+tables are searchable too.
 
 ### 3. Run it, wave by wave
 
@@ -212,6 +234,7 @@ turned out to be a useful design pressure:
 | one ETL pipeline | the whole medallion -- all layers -- is one pipeline |
 | no DBFS root | the landing zone is a **Unity Catalog volume** |
 | restricted outbound egress (Kaggle unreachable) | data is downloaded locally and the CDC stream is generated locally, then uploaded |
+| only one writable catalog (`workspace`), and no folders in Unity Catalog | the five schemas share it under a `retail_*` prefix and carry `project`/`layer` tags -- see `tools/tag_schemas.py` |
 | no Beta / Preview features | inline `FLOW AUTO CDC`, bitemporal AUTO CDC and MV change feeds are documented as extensions instead |
 
 ## The scheduled job

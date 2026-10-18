@@ -5,6 +5,12 @@
 # Catalog lineage, grants and retention can be reasoned about per layer. The
 # pipeline writes to all five from a single pipeline, using fully qualified
 # names built from its `configuration` block.
+#
+# On Free Edition these all live in the one writable catalog (`workspace`),
+# alongside `default` and `information_schema`. The `retail_*` prefix keeps them
+# findable; `tools/tag_schemas.py` adds the `project`/`layer` Unity Catalog tags
+# that the workspace search bar and the Catalog Explorer Tag filter index. Tags
+# cannot be declared here -- an Asset Bundle schema resource has no `tags` field.
 # ---------------------------------------------------------------------------
 resources:
   schemas:

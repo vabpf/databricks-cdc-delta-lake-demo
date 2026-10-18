@@ -449,6 +449,14 @@ deliverable is a repo, and its correctness rests on documented behaviour.
 | no DBFS root | the landing zone is a **UC volume** (`/Volumes/workspace/retail_landing/cdc`) |
 | restricted egress (Kaggle unreachable) | data is downloaded and the CDC stream generated **locally**, then uploaded |
 | no Beta/Preview | drives §11 |
+| one writable catalog (`workspace`), and no folders in Unity Catalog | the five schemas share it with `default` and `information_schema`; the `retail_*` prefix plus `project`/`layer` tags keep them findable |
+
+Tags are not declarable in the bundle: a `schemas` resource supports `comment`
+and `properties`, but Unity Catalog tags go through a separate
+`entity-tag-assignments` API. Hence the small post-deploy script,
+`tools/tag_schemas.py`. Tags are what the workspace search bar and the Catalog
+Explorer Tag filter actually index, and they are readable from
+`information_schema.schema_tags`.
 
 The `configuration` block in `resources/pipeline.yml` is the single source of
 truth for naming. Python reads it with `spark.conf.get("retail_silver")`; SQL

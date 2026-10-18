@@ -22,6 +22,7 @@ python tools/verify_stream.py --landing data/landing   # expect: RESULT: PASS
 # workspace
 databricks bundle validate
 databricks bundle deploy
+python tools/tag_schemas.py          # label the schemas so they stand out
 ```
 
 Leave the environment deployed with **no data loaded**. That way Act 1 is a real
