@@ -125,18 +125,28 @@ python tools/tag_schemas.py
 
 Free Edition gives you a single writable catalog (`workspace`) and Unity Catalog
 has no folders, so the five schemas share that catalog with `default` and
-`information_schema`. The `retail_*` prefix already narrows them down in Catalog
-Explorer; the tags add what a name cannot -- they are what the workspace search
-bar and the Catalog Explorer **Tag** filter index, and they are queryable:
+`information_schema`. The `retail_*` prefix is what narrows them down in Catalog
+Explorer's filter box. The tags the script applies are read on an object's
+Overview page, and in SQL:
 
 ```sql
 SELECT * FROM workspace.information_schema.schema_tags;
 ```
 
-The bundle cannot set these itself (an Asset Bundle `Schema` resource has no
-`tags` field), which is why it is a separate step. Re-run it with
-`--include-tables` once the pipeline has built the tables, so the silver and gold
-tables are searchable too.
+One documented limitation is worth knowing before you go looking for them:
+**schemas cannot be tag-searched.** Databricks' tag search covers tables, views,
+volumes, models, functions, dashboards and notebooks -- catalogs, schemas and
+columns are explicitly excluded -- and Catalog Explorer's filter box matches
+names only, not tags. The searchable payoff is therefore the objects *inside* the
+schemas, which the script tags as well. In the workspace search bar (Cmd-P):
+
+```
+tag:project:retail-cdc-demo
+```
+
+The bundle cannot set these tags itself (an Asset Bundle `Schema` resource has no
+`tags` field), which is why it is a separate step. Re-run it after the pipeline
+has built tables, to pick up the new ones.
 
 ### 3. Run it, wave by wave
 

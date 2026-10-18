@@ -7,10 +7,13 @@
 # names built from its `configuration` block.
 #
 # On Free Edition these all live in the one writable catalog (`workspace`),
-# alongside `default` and `information_schema`. The `retail_*` prefix keeps them
-# findable; `tools/tag_schemas.py` adds the `project`/`layer` Unity Catalog tags
-# that the workspace search bar and the Catalog Explorer Tag filter index. Tags
-# cannot be declared here -- an Asset Bundle schema resource has no `tags` field.
+# alongside `default` and `information_schema`. There is no folder concept, so
+# the `retail_*` prefix is what makes them navigable: Catalog Explorer's filter
+# box matches names. `tools/tag_schemas.py` additionally applies `project`/`layer`
+# Unity Catalog tags, readable on each schema's Overview page and from
+# `information_schema.schema_tags` -- though note that schemas cannot be
+# tag-searched (only tables, views, volumes, models, functions and notebooks can).
+# Tags cannot be declared here: an Asset Bundle schema resource has no `tags`.
 # ---------------------------------------------------------------------------
 resources:
   schemas:

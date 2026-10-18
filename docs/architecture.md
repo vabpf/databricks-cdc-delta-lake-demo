@@ -454,9 +454,17 @@ deliverable is a repo, and its correctness rests on documented behaviour.
 Tags are not declarable in the bundle: a `schemas` resource supports `comment`
 and `properties`, but Unity Catalog tags go through a separate
 `entity-tag-assignments` API. Hence the small post-deploy script,
-`tools/tag_schemas.py`. Tags are what the workspace search bar and the Catalog
-Explorer Tag filter actually index, and they are readable from
-`information_schema.schema_tags`.
+`tools/tag_schemas.py`.
+
+There is an asymmetry that makes tags only half a solution here: **schemas are
+not tag-searchable.** Tag search -- the workspace search bar, with
+`tag:<key>[:<value>]` -- covers tables, views, volumes, models, functions,
+dashboards and notebooks, and explicitly excludes catalogs, schemas and columns;
+Catalog Explorer's filter box matches names, not tags. So on a schema the tag is
+metadata, readable on its Overview page and from
+`information_schema.schema_tags`, and the `retail_*` prefix stays the thing that
+makes the schema list navigable. The script tags tables and volumes too, which is
+where tag search actually pays off.
 
 The `configuration` block in `resources/pipeline.yml` is the single source of
 truth for naming. Python reads it with `spark.conf.get("retail_silver")`; SQL
