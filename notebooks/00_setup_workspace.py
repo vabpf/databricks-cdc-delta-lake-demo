@@ -288,3 +288,7 @@ except Exception as exc:
 # MAGIC Run `01_explore_landing_cdc.py` to look at the raw change stream before any
 # MAGIC of it is loaded -- the Debezium envelope, the deliberately broken records,
 # MAGIC and the schema drift that does not show up until wave 3.
+# MAGIC
+# MAGIC After waves 1 and 2 are loaded, `02_explore_waves.sql` compares them layer
+# MAGIC by layer: what each delivery contained, what was quarantined, and what
+# MAGIC changed in silver and gold.

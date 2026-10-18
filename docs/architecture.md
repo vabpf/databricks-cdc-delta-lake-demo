@@ -576,3 +576,22 @@ Break one and the demo breaks in a way that is not always obvious.
    dataset file goes through `_feed_name()`. A pipeline also will not drop a
    table whose definition you removed, so relocating a dataset means dropping
    the old table by hand.
+10. **A SQL notebook parameterises with `SET` + `${name}`, not `CREATE WIDGET`.**
+    `CREATE WIDGET TEXT name DEFAULT 'value'` is the documented way to create
+    widgets in SQL, and it is a *notebook* command: a SQL warehouse rejects it
+    with `[PARSE_SYNTAX_ERROR] Syntax error at or near 'WIDGET'`. Worse, `${name}`
+    as a reference to a *widget* value is deprecated from Databricks Runtime 15.2
+    onwards, where the current form is the `:param` parameter marker -- and using
+    that for a table name costs an `IDENTIFIER(:catalog || '.' || :schema || ...)`
+    at every reference.
+
+    Session configuration avoids the whole question. `SET catalog=workspace;` and
+    then `${catalog}` substitute textually, so one parameter works in an
+    identifier *and* inside a quoted string literal, and the statements stay
+    readable. This is not a workaround: it is exactly how `src/pipeline/*.sql`
+    resolves its 161 `${retail_catalog}`-style placeholders, out of the
+    `configuration` block of `resources/pipeline.yml`. Two things to know: `SET`
+    takes a bare value -- no spaces, no quotes -- and a **SQL warehouse leaves
+    substitution switched off** (`SELECT '${spark.sql.shuffle.partitions}'`
+    returns the literal text), so a notebook written this way runs on notebook
+    compute, not on a warehouse.

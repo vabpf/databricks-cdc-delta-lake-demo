@@ -181,6 +181,14 @@ transactionally. Schema drift does not appear until wave 3 (`orders`) and
 wave 4 (`products`), so running all six waves in one shot is fine but runs the
 drift past you.
 
+Between waves, `notebooks/02_explore_waves.sql` is the exploration step. It is
+pure SQL, it wants at least two waves loaded before it says anything, and it
+answers "what did that delivery actually do?" at three layers -- bronze by
+`_source_file`, where the wave is literally in the filename; silver and gold by
+the update timeline in `system.lakeflow.pipeline_update_timeline`, because
+there is no wave number anywhere upstream of gold. The `wave_a` / `wave_b`
+parameters point the side-by-side comparison at any two deliveries.
+
 Two traps worth knowing before you start editing pipeline code:
 
 * **`bundle run` does not sync your working tree.** It re-runs whatever the last
@@ -206,6 +214,7 @@ Then take the tour:
 ```
 notebooks/00_setup_workspace.py         # verify the environment, see the waves
 notebooks/01_explore_landing_cdc.py     # look at the raw stream first
+notebooks/02_explore_waves.sql          # pure SQL: what each wave delivered, and where
 notebooks/10_medallion_walkthrough.py   # the flagship tour, with PASS/FAIL checks
 notebooks/20_time_travel_and_cdf.py     # histories, change feeds, GDPR
 notebooks/30_reprocess_and_late_data.py # hand-crafted late data, replays, refresh
@@ -213,12 +222,21 @@ notebooks/40_ops_event_log_dq.py        # event log, expectations, quarantine
 notebooks/99_reset_demo.py              # full refresh / clean slate
 ```
 
+`02_explore_waves.sql` is the only `.sql` notebook in the set: its cells are SQL
+natively rather than `%sql` magics wrapped in Python. Run it where you run the
+other notebooks, on notebook compute -- not in a SQL warehouse. Its eight
+parameters are session confs set with `SET` and substituted as `${name}`, which
+is the same mechanism `src/pipeline/*.sql` relies on, and SQL warehouses leave
+that substitution switched off. Compare any two waves by changing `wave_a` /
+`wave_b` in the first cell.
+
 ## The notebooks
 
 | notebook | what it shows |
 |---|---|
 | `00_setup_workspace` | read-only check: schemas exist, how many waves have arrived, pipeline state |
 | `01_explore_landing_cdc` | read the raw files directly: the envelope, the planted garbage, the drift |
+| `02_explore_waves` | pure SQL exploration: the update timeline, per-wave delivery and quarantine accounting, wave A vs wave B, SCD1/SCD2 state, and what a delete does to each |
 | `10_medallion_walkthrough` | the guided tour, ending in a set of assertions (`N/N checks passed`) |
 | `20_time_travel_and_cdf` | Delta time travel, `table_changes()`, the gold change feeds, and a worked GDPR erasure |
 | `30_reprocess_and_late_data` | manufactures late/out-of-order events by hand, proves replay idempotency, and shows `TRACK HISTORY ON` and full-refresh idempotency |
