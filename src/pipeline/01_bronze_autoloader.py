@@ -39,34 +39,25 @@ ENTITY_COMMENTS = {
 }
 
 
-# Auto Loader types a column by looking only at the sample it reads first. Every
-# create and every snapshot record carries before=null, so if an entity's first
-# files happen to contain nothing but creates, the whole `before` struct is
-# inferred as STRING -- and then `before.<key>` in 02_bronze_conform.sql fails to
-# analyse with:
+# `before` and `after` are structs, and 02_bronze_conform.sql reads keys out of
+# them (`after`.*, `before.<key>`). That shape is *not* guaranteed by anything
+# here, because Auto Loader types a column from the sample it reads first: a
+# field that is null in every sampled record is inferred as STRING. `before` is
+# null on create and on snapshot-read, so an entity whose opening files carry
+# only creates has the whole `before` struct flattened to a scalar, and
+# `before.<key>` then fails at analysis -- taking every table in the pipeline
+# down with it, since a pipeline analyses the whole graph before executing.
 #
-#   Can't extract a value from "before". Need a complex type [STRUCT, ARRAY,
-#   MAP] but got "STRING".
+# The guarantee therefore comes from the source: the generator never omits a
+# before image on an update, and tools/verify_stream.py asserts that.
 #
-# A pipeline analyses its entire graph before executing, so that one mistyped
-# column means zero tables are created and the whole update fails in a second.
-#
-# Hinting a single string column *inside* `before` pins it as a struct no matter
-# which operations happen to land in the sample. The hint only asserts a nested
-# field's type -- it does not declare the struct's shape, so the remaining
-# fields still come from inference and `after` (the drift-carrying payload) is
-# untouched. Each entry below is the string component of that entity's key.
-BEFORE_KEY_HINTS = {
-    "customers": "customer_id",
-    "products": "product_id",
-    "sellers": "seller_id",
-    "orders": "order_id",
-    "order_items": "order_id",
-    "order_payments": "order_id",
-    "order_reviews": "review_id",
-}
-
-
+# Do NOT try to enforce it with cloudFiles.schemaHints. A dotted hint can only
+# *add* a nested field, so against an already-STRING `before` it fails with
+# "Cannot add <key> because its parent is not a StructType" -- a second, more
+# confusing error in place of the first, never a promotion. And because an
+# inferred schema is sticky (it is replayed from the schema location on every
+# restart), the only way to re-infer is a full refresh of the table. See item 8
+# in docs/architecture.md.
 def _autoloader(entity: str):
     """A streaming DataFrame over one entity's landing directory."""
     return (
@@ -75,10 +66,6 @@ def _autoloader(entity: str):
         .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
         .option("cloudFiles.rescuedDataColumn", "_rescued_data")
         .option("cloudFiles.inferColumnTypes", "true")
-        .option(
-            "cloudFiles.schemaHints",
-            f"before.{BEFORE_KEY_HINTS[entity]} STRING",
-        )
         .option("cloudFiles.includeExistingFiles", "true")
         .load(f"{EVENTS_PATH}/{entity}/")
     )

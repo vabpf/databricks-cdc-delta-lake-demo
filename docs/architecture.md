@@ -542,11 +542,24 @@ Break one and the demo breaks in a way that is not always obvious.
    ```
 
    That is again an *analysis* failure, so it costs every table in the pipeline,
-   not one. Two defences, both in place: the generator never omits `before` on
-   an update (and `tools/verify_stream.py` asserts the contract, so a
-   regenerate cannot silently reintroduce it), and `01_bronze_autoloader.py`
-   pins `before.<string-key> STRING` via `cloudFiles.schemaHints`. The hint
-   asserts one nested field's type rather than declaring the struct's shape, so
-   every other field -- and the drift-carrying `after` payload -- is still
-   supplied by inference. This matters because an inferred schema is sticky: a
-   hint is the only way to correct `before` without recreating the pipeline.
+   not one. The defence is the source contract: the generator never omits
+   `before` on an update, and `tools/verify_stream.py` asserts it, so a
+   regenerate cannot silently reintroduce the hole.
+
+   A `cloudFiles.schemaHints` entry looks like the obvious fix and is **not**. A
+   dotted hint (`before.review_id STRING`) can only *add* a nested field, so
+   against a `before` that inference has already typed as `STRING` it fails with
+   `Cannot add review_id because its parent is not a StructType` -- a second,
+   more confusing error rather than a promotion. And an inferred schema is
+   **sticky**: it is replayed from the schema location on every restart, so it
+   will not correct itself once the source data is fixed. On a Lakeflow pipeline
+   the schema location is managed by the platform (under `dbfs:/pipelines/...`,
+   not reachable on Free Edition), so the supported reset is a full refresh,
+   which clears the managed schema locations and re-infers from scratch:
+
+   ```bash
+   databricks bundle run retail_medallion_cdc --full-refresh-all
+   ```
+
+   If you set `cloudFiles.schemaLocation` yourself, a full refresh does *not*
+   touch it -- another reason to leave the location to the pipeline.

@@ -7,7 +7,12 @@ worth asserting them locally first:
 
   1. every non-`broken` line is valid JSON with the expected envelope keys
   2. op is one of c/u/d/r/t/x
-  3. `c`/`r` rows have before=null; `d` rows have after=null
+  3. `c`/`r` rows have before=null; `d` rows have after=null; `u` rows have
+     before -- the whole prior row, even when `after` is a partial image. This
+     one is not cosmetic: Auto Loader types a column from the sample it reads,
+     and an entity whose sample held no before image at all would have the
+     whole `before` struct inferred as STRING, which breaks `before.<key>` in
+     bronze. See item 8 in docs/architecture.md.
   4. per entity+key, `event_ts` is strictly increasing across the WHOLE stream
      (this is what makes AUTO CDC's SEQUENCE BY deterministic)
   5. primary keys are non-null on the rows that are supposed to be valid
@@ -111,6 +116,12 @@ def main(argv=None) -> int:
                 problem(f"{path.name}:{lineno} op=d must have after=null", "after_not_null")
             if op == "u" and rec.get("after") is None:
                 problem(f"{path.name}:{lineno} op=u must have after", "u_no_after")
+            if op == "u" and rec.get("before") is None:
+                problem(
+                    f"{path.name}:{lineno} op=u must have before (the whole prior "
+                    f"row, even on a partial update)",
+                    "u_no_before",
+                )
 
             image = rec.get("after") or rec.get("before") or {}
             columns_by_wave[(entity, wave)] |= set(image.keys())
