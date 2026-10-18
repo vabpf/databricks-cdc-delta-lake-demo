@@ -576,22 +576,26 @@ Break one and the demo breaks in a way that is not always obvious.
    dataset file goes through `_feed_name()`. A pipeline also will not drop a
    table whose definition you removed, so relocating a dataset means dropping
    the old table by hand.
-10. **A SQL notebook parameterises with `SET` + `${name}`, not `CREATE WIDGET`.**
-    `CREATE WIDGET TEXT name DEFAULT 'value'` is the documented way to create
-    widgets in SQL, and it is a *notebook* command: a SQL warehouse rejects it
-    with `[PARSE_SYNTAX_ERROR] Syntax error at or near 'WIDGET'`. Worse, `${name}`
-    as a reference to a *widget* value is deprecated from Databricks Runtime 15.2
-    onwards, where the current form is the `:param` parameter marker -- and using
-    that for a table name costs an `IDENTIFIER(:catalog || '.' || :schema || ...)`
-    at every reference.
+10. **A SQL notebook cannot be parameterised with `SET` + `${name}`.** Both halves
+    fail on serverless notebook compute, and they fail differently.
 
-    Session configuration avoids the whole question. `SET catalog=workspace;` and
-    then `${catalog}` substitute textually, so one parameter works in an
-    identifier *and* inside a quoted string literal, and the statements stay
-    readable. This is not a workaround: it is exactly how `src/pipeline/*.sql`
-    resolves its 161 `${retail_catalog}`-style placeholders, out of the
-    `configuration` block of `resources/pipeline.yml`. Two things to know: `SET`
-    takes a bare value -- no spaces, no quotes -- and a **SQL warehouse leaves
-    substitution switched off** (`SELECT '${spark.sql.shuffle.partitions}'`
-    returns the literal text), so a notebook written this way runs on notebook
-    compute, not on a warehouse.
+    `SET catalog=workspace;` is rejected outright with `[CONFIG_NOT_AVAILABLE]
+    Configuration catalog is not available`. Spark Connect only accepts
+    configuration keys it already knows, so a parameter of your own cannot be
+    set this way -- and the failure is not specific to the name `catalog`, it is
+    any custom key. Separately, `${name}` substitution is deprecated from
+    Databricks Runtime 15.2 on, where a warning tells you to migrate to the
+    `:param` marker; taking that advice costs an `IDENTIFIER(:catalog || '.' ||
+    :schema || ...)` on every table reference. `CREATE WIDGET` does not rescue
+    it either: a SQL warehouse rejects it with `[PARSE_SYNTAX_ERROR] Syntax error
+    at or near 'WIDGET'`.
+
+    The pipeline's 161 `${retail_catalog}`-style placeholders are not a
+    counterexample. A pipeline resolves those from the `configuration` block of
+    `resources/pipeline.yml`, on its own engine, without asking Spark Connect.
+    A notebook has no equivalent, so `02_explore_waves.sql` spells every name out
+    in full (`workspace.retail_bronze.orders_cdc`) and has no parameters at all.
+    The lesson is not "use `:param`" -- it is that a notebook gains nothing by
+    substituting a dozen literals that are already fully qualified and already
+    readable. Spell the names out; edit them where they are if you rename a
+    schema.

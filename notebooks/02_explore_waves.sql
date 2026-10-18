@@ -31,6 +31,7 @@
 -- MAGIC
 -- MAGIC | section | lens |
 -- MAGIC |---|---|
+-- MAGIC | 0 | why every name is spelled out, and the two literals to edit |
 -- MAGIC | 1 | the pipeline updates, which is what defines a wave downstream |
 -- MAGIC | 2 | bronze, per entity and wave, by operation |
 -- MAGIC | 3 | bronze, the landed = conformed + quarantined accounting, per wave, and why |
@@ -42,37 +43,31 @@
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## 0. Parameters
+-- MAGIC ## 0. Names, and why there are no parameters
 -- MAGIC
--- MAGIC All eight live in one cell as **session configuration**: `SET name=value`,
--- MAGIC read back textually as `${name}` below.
+-- MAGIC Every table is spelled out in full -- `workspace.retail_bronze.orders_cdc` --
+-- MAGIC and nothing is parameterised. That is deliberate: the two obvious ways to
+-- MAGIC parameterise a SQL notebook both fail here, for different reasons.
 -- MAGIC
--- MAGIC This is deliberately not `CREATE WIDGET`. Two reasons. `${param}` as a
--- MAGIC *widget* syntax is deprecated since Databricks Runtime 15.2 (the current
--- MAGIC form is `:param`, which would force `IDENTIFIER(:catalog || '.' || ...)`
--- MAGIC on every table reference and unreadable SQL in exchange). And session
--- MAGIC substitution is not a guess here: it is the exact mechanism this repo's
--- MAGIC own pipeline depends on -- 161 `${retail_catalog}`-style placeholders in
--- MAGIC `src/pipeline/*.sql`, resolved from the `configuration` block of
--- MAGIC `resources/pipeline.yml`. Same engine, same substitution.
+-- MAGIC * `SET name=value`, the session-configuration route, is **rejected on
+-- MAGIC   serverless notebook compute**: `SET catalog=workspace` fails with
+-- MAGIC   `[CONFIG_NOT_AVAILABLE] Configuration catalog is not available`. Spark
+-- MAGIC   Connect only lets you set configuration keys it recognises, and your own
+-- MAGIC   parameters are not among them.
+-- MAGIC * `${name}` substitution is **deprecated** from Databricks Runtime 15.2 on,
+-- MAGIC   which is why you will see a warning telling you to migrate to `:param`.
+-- MAGIC   `:param` would then force `IDENTIFIER(:catalog || '.' || :schema || ...)`
+-- MAGIC   on every one of these references, for no gain at all.
 -- MAGIC
--- MAGIC `SET` takes a bare value: no spaces, no quotes. Change the last two lines
--- MAGIC to compare other deliveries; change the first six if you renamed the
--- MAGIC schemas.
-
--- COMMAND ----------
-
-SET catalog=workspace;
-SET bronze_schema=retail_bronze;
-SET silver_schema=retail_silver;
-SET gold_schema=retail_gold;
-SET ops_schema=retail_ops;
-SET pipeline_name=retail_medallion_cdc;
-
--- The two waves section 4 compares, as the two-character token the uploader
--- puts in every filename (_w01_, _w02_).
-SET wave_a=01;
-SET wave_b=02;
+-- MAGIC The pipeline itself does use `${retail_catalog}`-style placeholders -- 161
+-- MAGIC of them in `src/pipeline/*.sql` -- but it can, because a pipeline resolves
+-- MAGIC them from the `configuration` block of `resources/pipeline.yml` on its own
+-- MAGIC engine. A notebook cannot make that assumption, so this one does not.
+-- MAGIC
+-- MAGIC **Two places to edit if you want them:** the literal `'01'` / `'02'` in
+-- MAGIC section 4 (the two waves being compared), and the `'retail_medallion_cdc'`
+-- MAGIC in the two `system.lakeflow` queries in sections 1 and 6. If you deployed
+-- MAGIC under a different catalog or schema, find-and-replace the names.
 
 -- COMMAND ----------
 
@@ -106,7 +101,7 @@ FROM system.lakeflow.pipeline_update_timeline
 WHERE pipeline_id IN (
   SELECT pipeline_id
   FROM system.lakeflow.pipelines
-  WHERE name = '${pipeline_name}'
+  WHERE name = 'retail_medallion_cdc'
 )
 ORDER BY period_end_time DESC
 LIMIT 10;
@@ -153,31 +148,31 @@ LIMIT 10;
 WITH events AS (
   SELECT 'customers' AS entity,
          regexp_extract(_source_file, '_w([0-9]{2})_', 1) AS wave, _op
-  FROM ${catalog}.${bronze_schema}.customers_cdc
+  FROM workspace.retail_bronze.customers_cdc
   UNION ALL
   SELECT 'products',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.products_cdc
+  FROM workspace.retail_bronze.products_cdc
   UNION ALL
   SELECT 'sellers',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.sellers_cdc
+  FROM workspace.retail_bronze.sellers_cdc
   UNION ALL
   SELECT 'orders',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.orders_cdc
+  FROM workspace.retail_bronze.orders_cdc
   UNION ALL
   SELECT 'order_items',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.order_items_cdc
+  FROM workspace.retail_bronze.order_items_cdc
   UNION ALL
   SELECT 'order_payments',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.order_payments_cdc
+  FROM workspace.retail_bronze.order_payments_cdc
   UNION ALL
   SELECT 'order_reviews',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.order_reviews_cdc
+  FROM workspace.retail_bronze.order_reviews_cdc
 )
 SELECT
   entity,
@@ -211,17 +206,17 @@ ORDER BY entity, wave;
 
 WITH landed AS (
   SELECT regexp_extract(_source_file, '_w([0-9]{2})_', 1) AS wave, count(*) AS rows
-  FROM ${catalog}.${bronze_schema}.orders_raw
+  FROM workspace.retail_bronze.orders_raw
   GROUP BY 1
 ),
 conformed AS (
   SELECT regexp_extract(_source_file, '_w([0-9]{2})_', 1) AS wave, count(*) AS rows
-  FROM ${catalog}.${bronze_schema}.orders_cdc
+  FROM workspace.retail_bronze.orders_cdc
   GROUP BY 1
 ),
 rejected AS (
   SELECT regexp_extract(_source_file, '_w([0-9]{2})_', 1) AS wave, count(*) AS rows
-  FROM ${catalog}.${ops_schema}.orders_quarantine
+  FROM workspace.retail_ops.orders_quarantine
   GROUP BY 1
 )
 SELECT
@@ -249,13 +244,13 @@ ORDER BY wave;
 
 SELECT _source_entity AS entity, _quarantine_reason, count(*) AS rows
 FROM (
-  SELECT _source_entity, _quarantine_reason FROM ${catalog}.${ops_schema}.customers_quarantine
-  UNION ALL SELECT _source_entity, _quarantine_reason FROM ${catalog}.${ops_schema}.products_quarantine
-  UNION ALL SELECT _source_entity, _quarantine_reason FROM ${catalog}.${ops_schema}.sellers_quarantine
-  UNION ALL SELECT _source_entity, _quarantine_reason FROM ${catalog}.${ops_schema}.orders_quarantine
-  UNION ALL SELECT _source_entity, _quarantine_reason FROM ${catalog}.${ops_schema}.order_items_quarantine
-  UNION ALL SELECT _source_entity, _quarantine_reason FROM ${catalog}.${ops_schema}.order_payments_quarantine
-  UNION ALL SELECT _source_entity, _quarantine_reason FROM ${catalog}.${ops_schema}.order_reviews_quarantine
+  SELECT _source_entity, _quarantine_reason FROM workspace.retail_ops.customers_quarantine
+  UNION ALL SELECT _source_entity, _quarantine_reason FROM workspace.retail_ops.products_quarantine
+  UNION ALL SELECT _source_entity, _quarantine_reason FROM workspace.retail_ops.sellers_quarantine
+  UNION ALL SELECT _source_entity, _quarantine_reason FROM workspace.retail_ops.orders_quarantine
+  UNION ALL SELECT _source_entity, _quarantine_reason FROM workspace.retail_ops.order_items_quarantine
+  UNION ALL SELECT _source_entity, _quarantine_reason FROM workspace.retail_ops.order_payments_quarantine
+  UNION ALL SELECT _source_entity, _quarantine_reason FROM workspace.retail_ops.order_reviews_quarantine
 )
 GROUP BY entity, _quarantine_reason
 ORDER BY entity, rows DESC;
@@ -267,8 +262,9 @@ ORDER BY entity, rows DESC;
 -- MAGIC
 -- MAGIC This is the direct comparison, and it is exact: both columns come from the
 -- MAGIC same bronze tables, sliced by the two-character wave token in
--- MAGIC `_source_file`. Change the `wave_a` / `wave_b` values in section 0 to
--- MAGIC compare any two deliveries, with no timestamp reasoning at all.
+-- MAGIC `_source_file`. The two literals in the query below -- `'01'` for wave A,
+-- MAGIC `'02'` for wave B -- are the only thing to edit to compare any other pair
+-- MAGIC of deliveries, and there is no timestamp reasoning involved at all.
 -- MAGIC
 -- MAGIC Read it entity by entity, because there is no single answer:
 -- MAGIC
@@ -293,31 +289,31 @@ ORDER BY entity, rows DESC;
 WITH events AS (
   SELECT 'customers' AS entity,
          regexp_extract(_source_file, '_w([0-9]{2})_', 1) AS wave, _op
-  FROM ${catalog}.${bronze_schema}.customers_cdc
+  FROM workspace.retail_bronze.customers_cdc
   UNION ALL
   SELECT 'products',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.products_cdc
+  FROM workspace.retail_bronze.products_cdc
   UNION ALL
   SELECT 'sellers',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.sellers_cdc
+  FROM workspace.retail_bronze.sellers_cdc
   UNION ALL
   SELECT 'orders',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.orders_cdc
+  FROM workspace.retail_bronze.orders_cdc
   UNION ALL
   SELECT 'order_items',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.order_items_cdc
+  FROM workspace.retail_bronze.order_items_cdc
   UNION ALL
   SELECT 'order_payments',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.order_payments_cdc
+  FROM workspace.retail_bronze.order_payments_cdc
   UNION ALL
   SELECT 'order_reviews',
          regexp_extract(_source_file, '_w([0-9]{2})_', 1), _op
-  FROM ${catalog}.${bronze_schema}.order_reviews_cdc
+  FROM workspace.retail_bronze.order_reviews_cdc
 ),
 per_wave AS (
   SELECT
@@ -332,14 +328,14 @@ per_wave AS (
 )
 SELECT
   entity,
-  max(CASE WHEN wave = '${wave_a}' THEN events  END) AS wave_a_events,
-  max(CASE WHEN wave = '${wave_a}' THEN new_rows END) AS wave_a_new_rows,
-  max(CASE WHEN wave = '${wave_a}' THEN updates END) AS wave_a_updates,
-  max(CASE WHEN wave = '${wave_a}' THEN deletes END) AS wave_a_deletes,
-  max(CASE WHEN wave = '${wave_b}' THEN events  END) AS wave_b_events,
-  max(CASE WHEN wave = '${wave_b}' THEN new_rows END) AS wave_b_new_rows,
-  max(CASE WHEN wave = '${wave_b}' THEN updates END) AS wave_b_updates,
-  max(CASE WHEN wave = '${wave_b}' THEN deletes END) AS wave_b_deletes
+  max(CASE WHEN wave = '01' THEN events  END) AS wave_a_events,
+  max(CASE WHEN wave = '01' THEN new_rows END) AS wave_a_new_rows,
+  max(CASE WHEN wave = '01' THEN updates END) AS wave_a_updates,
+  max(CASE WHEN wave = '01' THEN deletes END) AS wave_a_deletes,
+  max(CASE WHEN wave = '02' THEN events  END) AS wave_b_events,
+  max(CASE WHEN wave = '02' THEN new_rows END) AS wave_b_new_rows,
+  max(CASE WHEN wave = '02' THEN updates END) AS wave_b_updates,
+  max(CASE WHEN wave = '02' THEN deletes END) AS wave_b_deletes
 FROM per_wave
 GROUP BY entity
 ORDER BY entity;
@@ -378,31 +374,31 @@ SELECT
   count(DISTINCT customer_id) AS distinct_keys,
   count_if(__END_AT IS NULL) AS current_versions,
   count_if(__END_AT IS NOT NULL) AS closed_versions
-FROM ${catalog}.${silver_schema}.customers
+FROM workspace.retail_silver.customers
 UNION ALL
 SELECT 'products', 'SCD2', count(*), count(DISTINCT product_id),
   count_if(__END_AT IS NULL), count_if(__END_AT IS NOT NULL)
-FROM ${catalog}.${silver_schema}.products
+FROM workspace.retail_silver.products
 UNION ALL
 SELECT 'sellers', 'SCD2', count(*), count(DISTINCT seller_id),
   count_if(__END_AT IS NULL), count_if(__END_AT IS NOT NULL)
-FROM ${catalog}.${silver_schema}.sellers
+FROM workspace.retail_silver.sellers
 UNION ALL
 SELECT 'orders_status_history', 'SCD2', count(*), count(DISTINCT order_id),
   count_if(__END_AT IS NULL), count_if(__END_AT IS NOT NULL)
-FROM ${catalog}.${silver_schema}.orders_status_history
+FROM workspace.retail_silver.orders_status_history
 UNION ALL
 SELECT 'orders', 'SCD1', count(*), count(DISTINCT order_id), NULL, NULL
-FROM ${catalog}.${silver_schema}.orders
+FROM workspace.retail_silver.orders
 UNION ALL
 SELECT 'order_items', 'SCD1', count(*), count(DISTINCT order_id, order_item_id), NULL, NULL
-FROM ${catalog}.${silver_schema}.order_items
+FROM workspace.retail_silver.order_items
 UNION ALL
 SELECT 'order_payments', 'SCD1', count(*), count(DISTINCT order_id, payment_sequential), NULL, NULL
-FROM ${catalog}.${silver_schema}.order_payments
+FROM workspace.retail_silver.order_payments
 UNION ALL
 SELECT 'order_reviews', 'SCD1', count(*), count(DISTINCT review_id), NULL, NULL
-FROM ${catalog}.${silver_schema}.order_reviews
+FROM workspace.retail_silver.order_reviews
 ORDER BY entity;
 
 -- COMMAND ----------
@@ -419,16 +415,16 @@ ORDER BY entity;
 
 WITH deleted AS (
   SELECT DISTINCT order_id
-  FROM ${catalog}.${bronze_schema}.orders_cdc
+  FROM workspace.retail_bronze.orders_cdc
   WHERE _op = 'd'
 ),
 history AS (
   SELECT order_id, count_if(__END_AT IS NULL) AS open_versions
-  FROM ${catalog}.${silver_schema}.orders_status_history
+  FROM workspace.retail_silver.orders_status_history
   GROUP BY order_id
 ),
 scd1 AS (
-  SELECT order_id FROM ${catalog}.${silver_schema}.orders
+  SELECT order_id FROM workspace.retail_silver.orders
 )
 SELECT
   count(*) AS deleted_keys,
@@ -459,12 +455,12 @@ LEFT JOIN scd1 ON deleted.order_id = scd1.order_id;
 
 WITH deleted AS (
   SELECT DISTINCT order_id
-  FROM ${catalog}.${bronze_schema}.orders_cdc
+  FROM workspace.retail_bronze.orders_cdc
   WHERE _op = 'd'
 ),
 history AS (
   SELECT order_id, count_if(__END_AT IS NULL) AS open_versions
-  FROM ${catalog}.${silver_schema}.orders_status_history
+  FROM workspace.retail_silver.orders_status_history
   GROUP BY order_id
 ),
 alive AS (
@@ -480,7 +476,7 @@ SELECT
   events._lsn,
   events.order_status,
   regexp_extract(events._source_file, '_w([0-9]{2})_', 1) AS wave
-FROM ${catalog}.${bronze_schema}.orders_cdc AS events
+FROM workspace.retail_bronze.orders_cdc AS events
 JOIN alive ON events.order_id = alive.order_id
 ORDER BY events._event_ts, events._lsn;
 
@@ -524,31 +520,31 @@ WITH boundary AS (
   SELECT max(period_start_time) AS latest_start
   FROM system.lakeflow.pipeline_update_timeline
   WHERE pipeline_id IN (
-    SELECT pipeline_id FROM system.lakeflow.pipelines WHERE name = '${pipeline_name}'
+    SELECT pipeline_id FROM system.lakeflow.pipelines WHERE name = 'retail_medallion_cdc'
   )
   AND result_state = 'COMPLETED'
 ),
 feeds AS (
   SELECT 'customers' AS entity, _change_type, _commit_timestamp
-  FROM ${catalog}.${gold_schema}.customers_changes
+  FROM workspace.retail_gold.customers_changes
   UNION ALL
   SELECT 'products', _change_type, _commit_timestamp
-  FROM ${catalog}.${gold_schema}.products_changes
+  FROM workspace.retail_gold.products_changes
   UNION ALL
   SELECT 'sellers', _change_type, _commit_timestamp
-  FROM ${catalog}.${gold_schema}.sellers_changes
+  FROM workspace.retail_gold.sellers_changes
   UNION ALL
   SELECT 'orders', _change_type, _commit_timestamp
-  FROM ${catalog}.${gold_schema}.orders_changes
+  FROM workspace.retail_gold.orders_changes
   UNION ALL
   SELECT 'order_items', _change_type, _commit_timestamp
-  FROM ${catalog}.${gold_schema}.order_items_changes
+  FROM workspace.retail_gold.order_items_changes
   UNION ALL
   SELECT 'order_payments', _change_type, _commit_timestamp
-  FROM ${catalog}.${gold_schema}.order_payments_changes
+  FROM workspace.retail_gold.order_payments_changes
   UNION ALL
   SELECT 'order_reviews', _change_type, _commit_timestamp
-  FROM ${catalog}.${gold_schema}.order_reviews_changes
+  FROM workspace.retail_gold.order_reviews_changes
 )
 SELECT
   entity,
@@ -574,7 +570,7 @@ SELECT
   date_trunc('second', _commit_timestamp) AS commit_time,
   _change_type,
   count(*) AS rows
-FROM ${catalog}.${gold_schema}.orders_changes
+FROM workspace.retail_gold.orders_changes
 GROUP BY ALL
 ORDER BY commit_time, _change_type;
 
@@ -595,7 +591,7 @@ SELECT
   customer_state,
   __START_AT,
   __END_AT
-FROM ${catalog}.${gold_schema}.customers_changes
+FROM workspace.retail_gold.customers_changes
 ORDER BY _commit_version DESC, __START_AT DESC
 LIMIT 10;
 
@@ -620,7 +616,7 @@ SELECT
   sellers,
   round(revenue, 2) AS revenue,
   round(avg_item_price, 2) AS avg_item_price
-FROM ${catalog}.${gold_schema}.mart_category_revenue
+FROM workspace.retail_gold.mart_category_revenue
 ORDER BY revenue DESC
 LIMIT 15;
 
@@ -634,7 +630,7 @@ SELECT
   late_orders,
   round(avg_days_to_deliver, 1) AS avg_days_to_deliver,
   round(late_rate_pct, 2) AS late_rate_pct
-FROM ${catalog}.${gold_schema}.mart_delivery_sla
+FROM workspace.retail_gold.mart_delivery_sla
 WHERE delivered_orders >= 50
 ORDER BY late_rate_pct DESC
 LIMIT 15;
@@ -649,7 +645,7 @@ SELECT
   late_orders,
   round(lifetime_value, 2) AS lifetime_value,
   round(avg_order_value, 2) AS avg_order_value
-FROM ${catalog}.${gold_schema}.customer_360
+FROM workspace.retail_gold.customer_360
 ORDER BY lifetime_value DESC
 LIMIT 15;
 
@@ -660,9 +656,9 @@ LIMIT 15;
 -- MAGIC
 -- MAGIC * **Upload the next wave and re-run this notebook.** Section 1 gains an
 -- MAGIC   update, section 2 gains a wave row, and section 4 compares any two waves
--- MAGIC   if you change the two `SET` lines. Two numbers are real invariants:
--- MAGIC   `unexplained` at 0 in every row of section 3, and `rows_now =
--- MAGIC   current_versions + closed_versions` in section 5. If either breaks, the
+-- MAGIC   if you change the two literals in section 4. Two numbers are real
+-- MAGIC   invariants: `unexplained` at 0 in every row of section 3, and `rows_now
+-- MAGIC   = current_versions + closed_versions` in section 5. If either breaks, the
 -- MAGIC   pipeline is wrong and the query is not.
 -- MAGIC * **`10_medallion_walkthrough`** takes the same data and asserts the pipeline
 -- MAGIC   produced the right answer, layer by layer.

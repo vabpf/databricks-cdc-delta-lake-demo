@@ -186,8 +186,8 @@ pure SQL, it wants at least two waves loaded before it says anything, and it
 answers "what did that delivery actually do?" at three layers -- bronze by
 `_source_file`, where the wave is literally in the filename; silver and gold by
 the update timeline in `system.lakeflow.pipeline_update_timeline`, because
-there is no wave number anywhere upstream of gold. The `wave_a` / `wave_b`
-parameters point the side-by-side comparison at any two deliveries.
+there is no wave number anywhere upstream of gold. The comparison section takes
+the two waves as literals, so point it at any two deliveries by editing them.
 
 Two traps worth knowing before you start editing pipeline code:
 
@@ -223,12 +223,11 @@ notebooks/99_reset_demo.py              # full refresh / clean slate
 ```
 
 `02_explore_waves.sql` is the only `.sql` notebook in the set: its cells are SQL
-natively rather than `%sql` magics wrapped in Python. Run it where you run the
-other notebooks, on notebook compute -- not in a SQL warehouse. Its eight
-parameters are session confs set with `SET` and substituted as `${name}`, which
-is the same mechanism `src/pipeline/*.sql` relies on, and SQL warehouses leave
-that substitution switched off. Compare any two waves by changing `wave_a` /
-`wave_b` in the first cell.
+natively rather than `%sql` magics wrapped in Python. Every table name is spelled
+out in full, so it has no parameters and no substitution to trip over -- it runs
+on notebook compute or on a SQL warehouse. It wants at least two waves loaded
+before it says anything; to compare a different pair, edit the `'01'` / `'02'`
+literals in section 4.
 
 ## The notebooks
 

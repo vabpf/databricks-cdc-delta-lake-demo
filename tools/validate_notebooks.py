@@ -21,9 +21,14 @@ the file extension, so both formats go through the same structural checks.
 3. **Code that is not Python.** Every non-markdown `.py` cell must pass
    `ast.parse`. SQL cannot be parsed without a warehouse, so a `.sql` notebook
    is checked instead for **`${...}` references that no parameter declares** --
-   either `CREATE WIDGET TEXT name DEFAULT 'value'` or `SET name=value`. A typo
-   in a parameter name is the one SQL mistake that stays invisible in the source
-   and only fails when a reader runs the notebook.
+   by `CREATE WIDGET TEXT name DEFAULT 'value'` or `SET name=value`. A typo in a
+   parameter name is the one SQL mistake that stays invisible in the source and
+   only fails when a reader runs the notebook.
+
+   That check is a guard, not a pattern to copy. On serverless notebook compute
+   `SET` of a custom key fails outright (`[CONFIG_NOT_AVAILABLE]`) and `${name}`
+   is deprecated, so this repo writes names out in full rather than
+   substituting. The check exists so a future `${typo}` cannot slip past review.
 
 It also flags leftover scaffolding markers (the `# COMMANDILE` style placeholders
 that are easy to leave behind) and trailing whitespace, which is cosmetic but a
@@ -48,8 +53,10 @@ MAGIC_PY = "# MAGIC"
 MAGIC_SQL = "-- MAGIC"
 SUSPECT_MARKERS = ("COMMANDILE", "COMMAND----")
 WIDGET_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
-# A parameter is declared either the SQL-widget way or the session-conf way;
-# this repo uses the second, which is what the pipeline's own SQL files rely on.
+# A parameter is declared either the SQL-widget way or the session-conf way.
+# Neither is recommended inside a notebook -- see the docstring -- so this repo
+# spells the names out in full. The check is here so a future ${typo} cannot
+# slip past review unnoticed.
 DECLARED_PARAM = re.compile(
     r"(?:CREATE\s+WIDGET\s+(?:TEXT|NUMBER|SQL|NUMERIC)\s+([A-Za-z_][A-Za-z0-9_]*)"
     r"|^\s*SET\s+([A-Za-z_][A-Za-z0-9_]*)\s*=)",
