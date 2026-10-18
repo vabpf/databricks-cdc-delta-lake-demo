@@ -5,9 +5,10 @@
 # unit: five schemas, one landing volume, one Lakeflow pipeline, one scheduled
 # job.
 #
-# Nothing is hardcoded to a workspace. Authentication and host come from your
-# Databricks CLI profile (or DATABRICKS_HOST / DATABRICKS_TOKEN), so the same
-# bundle works against your workspace with no edits:
+# No secret is hardcoded. Authentication always comes from your Databricks CLI
+# profile (or DATABRICKS_HOST / DATABRICKS_TOKEN). The `dev` target does declare
+# a workspace host -- see the note on it below -- which is the single line to
+# change if you point this bundle at a different workspace:
 #
 #   databricks bundle validate
 #   databricks bundle deploy
@@ -60,18 +61,18 @@ targets:
     # with the deploying user, and this demo is far easier to follow when the
     # pipeline and its tables are named exactly as the README describes.
     #
-    # No workspace block: host and credentials come from the CLI profile, so
-    # there is no hostname or token in the repository and the same bundle works
-    # against any workspace.
+    # A workspace host is declared below. Credentials never live in this file:
+    # per the bundle reference, setting `host` makes the CLI match a profile in
+    # `.databrickscfg` and use that profile's auth.
     #
-    # The one tool that needs a host declared here is the Databricks VS Code
-    # extension. Its bundle view reports "Invalid host for target dev" when the
-    # target has no `workspace.host`, because it does not fall back to the CLI
-    # profile or to DATABRICKS_HOST (databricks-vscode issue #1661, still open).
-    # The CLI is unaffected -- `bundle deploy` resolves the host from the
-    # profile, which is why the terminal works and the extension does not. If
-    # you want the extension, uncomment this; credentials still come from your
-    # profile, so only the URL is added to the file:
+    # The host is here for the Databricks VS Code extension. Its bundle view
+    # reports "Invalid host for target dev" when the target has no
+    # `workspace.host`, because it does not fall back to the CLI profile or to
+    # DATABRICKS_HOST (databricks-vscode issue #1661, still open). The CLI never
+    # needed it -- `bundle deploy` resolves the host from the profile, which is
+    # why the terminal worked all along.
     #
+    # This line is the only thing making the bundle workspace-specific. Point it
+    # at your own workspace, or delete the block, to use the bundle elsewhere.
     # workspace:
     #   host: https://<workspace>.cloud.databricks.com

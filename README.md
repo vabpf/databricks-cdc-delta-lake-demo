@@ -92,8 +92,10 @@ including 122 deliberately broken lines.
   [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/) v0.230+
   authenticated (`databricks auth login`).
 * Optional: the [Databricks VS Code extension](https://docs.databricks.com/aws/en/dev-tools/vscode-ext/).
-  Its bundle view needs the selected target to declare `workspace.host`; the CLI
-  does not. See the note in [`databricks.yml`](databricks.yml).
+  Its bundle view reports *"Invalid host for target dev"* unless the target
+  declares `workspace.host`; the CLI does not need it. The `dev` target ships
+  one, so if you point this bundle at another workspace, edit that line. See the
+  note in [`databricks.yml`](databricks.yml).
 * Python 3.10+ locally: `pip install -r requirements.txt`.
 * Kaggle credentials for the one-time download. Create a Kaggle API token
   (Kaggle → Account → *Create New API Token*) and put it at
