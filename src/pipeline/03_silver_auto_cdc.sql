@@ -16,7 +16,7 @@
 -- ------------------------------
 --   customers              SCD2  addresses genuinely change; the history is the point
 --   products               SCD2  recategorisation / repricing must be replayable
---   sellers                SCD2  with TRACK HISTORY ON (city, state) only
+--   sellers                SCD2  with TRACK HISTORY ON seller_city, seller_state only
 --   orders                 SCD1  latest state wins; the timeline lives in the
 --                                sibling orders_status_history table
 --   orders_status_history  SCD2  narrowed to (order_id, order_status) -- this is
@@ -104,12 +104,22 @@ FROM STREAM(${retail_catalog}.${retail_bronze}.products_cdc)
 -- ===========================================================================
 -- sellers -- SCD Type 2, history tracked on a subset of columns
 -- ===========================================================================
--- TRACK HISTORY ON (seller_city, seller_state) means only a *relocation* opens
--- a new version. A change to any other seller column (the zip, say) is applied
--- to the open row without cutting a new one. With this dataset every relocation
+-- TRACK HISTORY ON seller_city, seller_state means only a *relocation* opens a
+-- new version. A change to any other seller column (the zip, say) is applied to
+-- the open row without cutting a new one. With this dataset every relocation
 -- happens to move the zip too, so the distinction is not visible in the seeded
 -- data -- notebooks/30_reprocess_and_late_data.py injects a zip-only change to
 -- make it visible on demand.
+--
+-- SYNTAX TRAP -- read this before "tidying" the clause below.
+--   COLUMNS takes a *parenthesised* list:      COLUMNS (order_id, order_status)
+--   TRACK HISTORY ON takes a *bare* list:      TRACK HISTORY ON seller_city, seller_state
+-- The docs list the same `columnList` nonterminal for both clauses, so it is
+-- natural to assume they take the same shape. They do not. Writing
+-- `TRACK HISTORY ON (a, b)` fails to parse:
+--   [PARSE_SYNTAX_ERROR] Syntax error at or near '(' SQLSTATE: 42601
+-- and because a pipeline analyses the whole graph before executing, that one
+-- parenthesised list stops *every* table in the pipeline from being created.
 CREATE OR REFRESH STREAMING TABLE ${retail_catalog}.${retail_silver}.sellers
 COMMENT 'Seller dimension history. History is tracked on (seller_city, seller_state) only.'
 TBLPROPERTIES (
@@ -130,7 +140,7 @@ FROM STREAM(${retail_catalog}.${retail_bronze}.sellers_cdc)
     _source_entity, _source_table, _source_snapshot, _source_file, _ingested_at, _rescued_data
   )
   STORED AS SCD TYPE 2
-  TRACK HISTORY ON (seller_city, seller_state);
+  TRACK HISTORY ON seller_city, seller_state;
 
 
 -- ===========================================================================
@@ -166,8 +176,9 @@ FROM STREAM(${retail_catalog}.${retail_bronze}.orders_cdc)
 -- COLUMNS (order_id, order_status) drops everything except the key and the
 -- tracked attribute, so the target is a clean delivery-lifecycle timeline:
 -- created -> approved -> shipped|invoiced -> delivered, or -> canceled.
--- TRACK HISTORY ON (order_status) makes the intent explicit: only a status
--- change opens a version.
+-- TRACK HISTORY ON order_status makes the intent explicit: only a status change
+-- opens a version. Bare list, no parentheses -- see the syntax trap at the
+-- sellers flow above.
 CREATE OR REFRESH STREAMING TABLE ${retail_catalog}.${retail_silver}.orders_status_history
 COMMENT 'Order status timeline (SCD2). One row per status period, straight from the order change stream.'
 TBLPROPERTIES (
@@ -185,7 +196,7 @@ FROM STREAM(${retail_catalog}.${retail_bronze}.orders_cdc)
   SEQUENCE BY _event_ts
   COLUMNS (order_id, order_status)
   STORED AS SCD TYPE 2
-  TRACK HISTORY ON (order_status);
+  TRACK HISTORY ON order_status;
 
 
 -- ===========================================================================

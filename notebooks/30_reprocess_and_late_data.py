@@ -337,7 +337,7 @@ except Exception as exc:  # noqa: BLE001
 # MAGIC
 # MAGIC ```sql
 # MAGIC   STORED AS SCD TYPE 2
-# MAGIC   TRACK HISTORY ON (seller_city, seller_state);
+# MAGIC   TRACK HISTORY ON seller_city, seller_state;
 # MAGIC ```
 # MAGIC
 # MAGIC So a **zip-code** correction is applied to the open version in place -- no
@@ -524,7 +524,7 @@ print(f"  current city: {seller_now['current_city']}")
 print()
 
 check(
-    "TRACK HISTORY ON (city, state): a zip-only change updates in place, no new version",
+    "TRACK HISTORY ON city, state: a zip-only change updates in place, no new version",
     seller_now["versions"] == SELLER_VERSIONS_BEFORE
     and str(seller_now["current_zip"]) == str(INJECTED_SELLER_ZIP),
     f"versions {SELLER_VERSIONS_BEFORE}->{seller_now['versions']}, "

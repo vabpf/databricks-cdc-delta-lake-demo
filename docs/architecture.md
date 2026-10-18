@@ -158,14 +158,28 @@ CREATE OR REFRESH STREAMING TABLE ... <target> ...;
 CREATE FLOW <name> AS AUTO CDC INTO <target>
 FROM STREAM(<bronze source>)
   KEYS (...)
-  [TRACK HISTORY ON (...)]
   [IGNORE NULL UPDATES]
   APPLY AS DELETE WHEN _op = 'd'
   [APPLY AS TRUNCATE WHEN _op = 't']
   SEQUENCE BY ...
   COLUMNS ...
-  STORED AS SCD TYPE n;
+  STORED AS SCD TYPE n
+  [TRACK HISTORY ON ...];
 ```
+
+Clause order is fixed, and `TRACK HISTORY ON` belongs at the *end*, after
+`STORED AS`. Two clause shapes are easy to confuse and worth stating plainly,
+because getting them wrong is a parse error, not a warning:
+
+```sql
+COLUMNS (a, b)                  -- parenthesised list
+TRACK HISTORY ON a, b           -- bare list, NO parentheses
+COLUMNS TO UPDATE <column>      -- names a source column holding array<string>
+```
+
+The docs give the same `columnList` nonterminal for `COLUMNS` and
+`TRACK HISTORY ON`, which is what makes the asymmetry surprising. See the
+worked failure in §13.
 
 The inline single-statement form (`CREATE ... FLOW AUTO CDC ...`) exists, but it
 is **Beta and requires the Preview channel**, so it is avoided. This matters
@@ -177,9 +191,9 @@ because the deliverable has to run on Free Edition on the stable channel.
 |---|---|---|---|
 | `customers` | 2 | `silver.customers` | addresses genuinely change; history is the point |
 | `products` | 2 | `silver.products` | recategorisation must be replayable |
-| `sellers` | 2 | `silver.sellers` | `TRACK HISTORY ON (seller_city, seller_state)` -- only a *relocation* opens a version, a zip correction does not |
+| `sellers` | 2 | `silver.sellers` | `TRACK HISTORY ON seller_city, seller_state` -- only a *relocation* opens a version, a zip correction does not |
 | `orders` | 1 | `silver.orders` | a single current row per order |
-| (same source) | 2 | `silver.orders_status_history` | the delivery timeline: `COLUMNS (order_id, order_status)`, `TRACK HISTORY ON (order_status)` |
+| (same source) | 2 | `silver.orders_status_history` | the delivery timeline: `COLUMNS (order_id, order_status)`, `TRACK HISTORY ON order_status` |
 | `order_items` | 1 | `silver.order_items` | composite key; corrections are overwrites |
 | `order_payments` | 1 | `silver.order_payments` | composite key; reversals delete |
 | `order_reviews` | 1 | `silver.order_reviews` | `IGNORE NULL UPDATES` + `APPLY AS TRUNCATE` |
@@ -492,3 +506,12 @@ Break one and the demo breaks in a way that is not always obvious.
 6. **The generator is deterministic.** It uses `zlib.crc32`, not `hash()`, and
    `_monotonic` guarantees per-key strictly-increasing `event_ts` (skipped for
    null-key rows). Change either and the seeded stream changes.
+7. **`COLUMNS (...)` is parenthesised; `TRACK HISTORY ON ...` is not.** They look
+   like the same clause and are documented with the same `columnList`
+   nonterminal, but `TRACK HISTORY ON (a, b)` is a parse error. Because a
+   pipeline analyses the whole graph before executing, one stray pair of
+   parentheses stops every table in the pipeline from being created -- the
+   update fails in seconds with `[PARSE_SYNTAX_ERROR] ... 'Syntax error at or
+   near ('` and nothing is built, so the failure looks bigger than the bug. The
+   first wave of this demo failed exactly this way; the clause shape is pinned
+   in a comment on `silver.sellers` in `03_silver_auto_cdc.sql`.
