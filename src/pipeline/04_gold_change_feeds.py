@@ -24,6 +24,13 @@
 # both: that is what makes the feed replayable. We add three booleans so
 # consumers do not have to pattern-match on strings.
 #
+# Those three names are reserved by Delta for its own change-feed metadata, so
+# Delta refuses to enable CDF *on* a table that owns them -- and this pipeline
+# turns CDF on for every table it creates, which is why each update used to
+# report "Could not turn on CDF for table ...". That is harmless here (nothing
+# reads the feed of a feed) but it is noise, so these tables opt out explicitly
+# in _feed_props below.
+#
 # The SCD2 subtlety worth knowing
 # -------------------------------
 # For an SCD2 target the primary key is the business key PLUS
@@ -48,6 +55,7 @@ from pyspark.sql import functions as F
 
 CATALOG = spark.conf.get("retail_catalog")
 SILVER = spark.conf.get("retail_silver")
+GOLD = spark.conf.get("retail_gold")
 
 
 def _change_feed(entity: str):
@@ -71,6 +79,20 @@ def _change_feed(entity: str):
     )
 
 
+def _feed_name(entity: str) -> str:
+    """The fully qualified name of one change-feed table.
+
+    The three-part name is load-bearing, not decoration. An unqualified dataset
+    name lands in the pipeline's *default* schema, which this pipeline sets to
+    the bronze schema so that the bare Auto Loader tables resolve (see
+    resources/pipeline.yml). The first version of this file named the seven
+    feeds bare, so the pipeline duly created gold-layer tables inside
+    retail_bronze -- where nothing was looking for them, since every query and
+    notebook addresses them as retail_gold.<entity>_changes.
+    """
+    return f"{CATALOG}.{GOLD}.{entity}_changes"
+
+
 def _feed_props(entity: str) -> dict:
     return {
         "quality": "gold",
@@ -78,11 +100,18 @@ def _feed_props(entity: str) -> dict:
         "entity": entity,
         "feed": "change_data_feed",
         "source_table": f"{CATALOG}.{SILVER}.{entity}",
+        # These tables materialise Delta's own CDF metadata columns as ordinary
+        # columns, and those names are reserved: Delta will not turn the feed on
+        # for a table that owns them. The pipeline enables CDF by default for
+        # every table it creates, so without this line every update emits
+        # "Could not turn on CDF for table ...". Opting out is both truthful and
+        # quiet -- the feed *is* the change data.
+        "delta.enableChangeDataFeed": "false",
     }
 
 
 @dp.table(
-    name="customers_changes",
+    name=_feed_name("customers"),
     comment="Change feed for the customer SCD2 dimension: every version opened and closed.",
     table_properties=_feed_props("customers"),
 )
@@ -91,7 +120,7 @@ def customers_changes():
 
 
 @dp.table(
-    name="products_changes",
+    name=_feed_name("products"),
     comment="Change feed for the product SCD2 dimension, including the drifted wave-4 columns.",
     table_properties=_feed_props("products"),
 )
@@ -100,7 +129,7 @@ def products_changes():
 
 
 @dp.table(
-    name="sellers_changes",
+    name=_feed_name("sellers"),
     comment="Change feed for the seller SCD2 dimension (history tracked on city/state only).",
     table_properties=_feed_props("sellers"),
 )
@@ -109,7 +138,7 @@ def sellers_changes():
 
 
 @dp.table(
-    name="orders_changes",
+    name=_feed_name("orders"),
     comment="Change feed for the current order state: the full lifecycle as one auditable stream.",
     table_properties=_feed_props("orders"),
 )
@@ -118,7 +147,7 @@ def orders_changes():
 
 
 @dp.table(
-    name="order_items_changes",
+    name=_feed_name("order_items"),
     comment="Change feed for order line items, including price corrections and removals.",
     table_properties=_feed_props("order_items"),
 )
@@ -127,7 +156,7 @@ def order_items_changes():
 
 
 @dp.table(
-    name="order_payments_changes",
+    name=_feed_name("order_payments"),
     comment="Change feed for order payments, including corrections and reversals.",
     table_properties=_feed_props("order_payments"),
 )
@@ -136,7 +165,7 @@ def order_payments_changes():
 
 
 @dp.table(
-    name="order_reviews_changes",
+    name=_feed_name("order_reviews"),
     comment="Change feed for reviews, including the partial edits applied via IGNORE NULL UPDATES.",
     table_properties=_feed_props("order_reviews"),
 )

@@ -563,3 +563,16 @@ Break one and the demo breaks in a way that is not always obvious.
 
    If you set `cloudFiles.schemaLocation` yourself, a full refresh does *not*
    touch it -- another reason to leave the location to the pipeline.
+9. **Every dataset name in this pipeline is fully qualified.** An unqualified
+   dataset is published to the pipeline's *default* schema, which
+   `resources/pipeline.yml` sets to bronze so that the bare Auto Loader tables in
+   `01_bronze_autoloader.py` resolve. Name a gold object bare and it is created
+   in `retail_bronze` -- and nothing fails, because the update is perfectly
+   valid; the tables are simply in the wrong layer. That is how the seven
+   `*_changes` feeds first landed in the bronze schema, where
+   `20_time_travel_and_cdf.py` -- which asks for `retail_gold.customers_changes`
+   -- could not find them. The SQL layers spell out
+   `${retail_catalog}.${retail_gold}.<name>` on every dataset; the one Python
+   dataset file goes through `_feed_name()`. A pipeline also will not drop a
+   table whose definition you removed, so relocating a dataset means dropping
+   the old table by hand.
