@@ -60,5 +60,18 @@ targets:
     # with the deploying user, and this demo is far easier to follow when the
     # pipeline and its tables are named exactly as the README describes.
     #
-    # No workspace block either: host and credentials come from the CLI profile,
-    # so there is no hostname or token in the repository.
+    # No workspace block: host and credentials come from the CLI profile, so
+    # there is no hostname or token in the repository and the same bundle works
+    # against any workspace.
+    #
+    # The one tool that needs a host declared here is the Databricks VS Code
+    # extension. Its bundle view reports "Invalid host for target dev" when the
+    # target has no `workspace.host`, because it does not fall back to the CLI
+    # profile or to DATABRICKS_HOST (databricks-vscode issue #1661, still open).
+    # The CLI is unaffected -- `bundle deploy` resolves the host from the
+    # profile, which is why the terminal works and the extension does not. If
+    # you want the extension, uncomment this; credentials still come from your
+    # profile, so only the URL is added to the file:
+    #
+    # workspace:
+    #   host: https://<workspace>.cloud.databricks.com

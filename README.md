@@ -91,6 +91,9 @@ including 122 deliberately broken lines.
 * A Databricks workspace (the demo targets **Free Edition**), and the
   [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/) v0.230+
   authenticated (`databricks auth login`).
+* Optional: the [Databricks VS Code extension](https://docs.databricks.com/aws/en/dev-tools/vscode-ext/).
+  Its bundle view needs the selected target to declare `workspace.host`; the CLI
+  does not. See the note in [`databricks.yml`](databricks.yml).
 * Python 3.10+ locally: `pip install -r requirements.txt`.
 * Kaggle credentials for the one-time download. Create a Kaggle API token
   (Kaggle → Account → *Create New API Token*) and put it at
